@@ -27,6 +27,7 @@
 	<ul id='datasetSideTabs' class='nav nav-tabs' role='tablist'>
 		<li class='active'><a href='#search' aria-controls="search" role="tab" data-toggle='tab'>Search</a></li>
 		{% if not g.config['PUBLIC'] %}
+		<li><a href='#tags' aria-controls="tags" role="tab" data-toggle='tab'>Tags</a></li>
 		<li><a href='#add' aria-controls="add" role="tab" data-toggle='tab'>Quick add</a></li>
 		{% endif %}
 	</ul>
@@ -36,15 +37,15 @@
 		<div role="tabpanel" class='tab-pane active' id='search'>
 			<form>
 				<div class='input-group'>
-	    			<input id="query" class="form-control input-sm" data-url="{{ url_for('malcom_api.query_data') }}" placeholder='tags=evil'>
+	    			<input id="query" class="form-control input-sm" data-url="{{ url_for('malcom_api.query') }}" placeholder='tags=evil'>
 					<span class="input-group-btn">
-						<button class='btn btn-primary btn-sm' type='button' onclick="get_dataset($('#query').val(), '{{ url_for('malcom_api.query_data') }}')">Go</button>
+						<button id='dataset-search' class='btn btn-primary btn-sm' type='button' data-source="{{ url_for('malcom_api.query') }}" onclick="get_dataset($('#query').val(), '{{ url_for('malcom_api.query') }}')">Go</button>
 					</span>
 				</div>
 
 				<div class="checkbox input-group-lg">
 					<label class="checkbox">
-					      <input id='fuzzy' type="checkbox"> Regex search (slower)
+					      <input id='regex' type="checkbox"> Regex search (slower)
 					</label>
 				</div>
 
@@ -56,9 +57,9 @@
 
 				<nav>
 				  <ul class="pagination">
-				    <li><a id='pagination-prev' href="javascript:void(0)" data-nav="0" onclick="change_page($(this).attr('data-nav'), '{{ url_for('malcom_api.query_data') }}')" aria-label="Previous">Prev</a></li>
+				    <li><a id='pagination-prev' href="javascript:void(0)" data-nav="0" onclick="change_page($(this).attr('data-nav'), '{{ url_for('malcom_api.query') }}')" aria-label="Previous">Prev</a></li>
 				    <li><a id='pagination-page' href="javascript:void(0)"></a></li>
-				    <li><a id='pagination-next' href="javascript:void(0)" data-nav="1" onclick="change_page($(this).attr('data-nav'), '{{ url_for('malcom_api.query_data') }}')" aria-label="Next">Next</a></li>
+				    <li><a id='pagination-next' href="javascript:void(0)" data-nav="1" onclick="change_page($(this).attr('data-nav'), '{{ url_for('malcom_api.query') }}')" aria-label="Next">Next</a></li>
 				  </ul>
 				  <br />
 				  <img id='loading-spinner' src="{{ url_for('static', filename='custom_img/ajax-loader.gif')}}">
@@ -66,6 +67,13 @@
 			</form>
 
 		</div>
+
+		<div role="tabpanel" class='tab-pane' id='tags'>
+			<table class='table table-condensed' id='tag-table' data-source='{{ url_for("malcom_api.tags")}}'>
+				<tr><td>Tag</td><td>Count</td></tr>
+			</table>
+		</div>
+
 		{% if not g.config['PUBLIC'] %}
 		<div role="tabpanel" class='tab-pane' id='add'>
 			<form id='addform' method='POST' enctype='multipart/form-data' action='{{ url_for("add_data") }}'>

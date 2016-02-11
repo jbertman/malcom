@@ -5,17 +5,12 @@ $(function(){
 	$("#query").keydown(function (event) {
 		if (event.which == 13) {
 			event.preventDefault();
-		}
-	});
-
-	$("#query").keyup(function (event) {
-		if (!$('#fuzzy').prop('checked') || event.which == 13) {
-			event.preventDefault();
 			get_dataset($('#query').val(), url);
 		}
 	});
-	
-	$(get_dataset("", url));
+
+	get_dataset("", url);
+	get_tags();
 });
 
 
@@ -30,7 +25,8 @@ function clear_db() {
 function dataset_remove(id) {
 	$.ajax({
 		dataType: "json",
-		url: url_static_prefix+'api/dataset/remove/'+id,
+		url: url_static_prefix+'api/dataset/remove/',
+		data: {'_id': id},
 		success:function(data){
 			if (data['n'] == 1)
 				$('#row_'+id).remove()
@@ -52,8 +48,8 @@ function get_dataset_csv(query, url) {
 			querydict['value'] = splitted[0]
 	}
 
-	if ($('#fuzzy').prop('checked') == true)
-		querydict['fuzzy'] = 'true'
+	if ($('#regex').prop('checked') == true)
+		querydict['regex'] = 'true'
 
 	url = url_static_prefix + url +"?"+ $.param(querydict)
 
@@ -65,6 +61,28 @@ function change_page(arg, url) {
 	query = $('#query').val()
 	location.hash = arg
 	get_dataset(query, url)
+}
+
+function get_tags() {
+	t = $("#tag-table")
+
+	$.ajax({
+		dataType: "json",
+		type: "GET",
+		url: t.data('source'),
+		success: function(data) {
+			for (var i in data) {
+				row = $("<tr><td><span class='label label-tag-"+data[i]['name']+"' data-tag='"+data[i]['name']+"'>"+data[i]['name']+"</span></td><td>"+data[i]['count']+"</td></tr>")
+				$('.label', row).click(function(){
+					get_dataset('tags='+$(this).data('tag'), $("#dataset-search").data('source'));
+				})
+				t.append(row)
+			}
+		}
+	});
+
+
+
 }
 
 function get_dataset(query, url) {
@@ -82,22 +100,19 @@ function get_dataset(query, url) {
 
 	// un # dans l'url
 	page = location.hash.split("#")[1]
-
 	if (page == undefined) {
 		page = 0;
 	}
 
-	params = {}
-	querydict['page'] = page
-
-	if ($('#fuzzy').prop('checked') == true)
-		querydict['fuzzy'] = 'true'
+	regex = false;
+	if ($('#regex').prop('checked') == true)
+		regex = 'true'
 
 	$.ajax({
 	  dataType: "json",
 	  type: 'GET',
 	  url: url,
-	  data: $.param(querydict),
+	  data: {query: JSON.stringify(querydict), page: page, regex: regex},
 	  beforeSend: function(data) {
 	  	$('#loading-spinner').addClass('show')
 	  },
@@ -112,7 +127,7 @@ function get_dataset(query, url) {
 	  	// get the headers
 	  	for (var i in data.fields) {
 	  		h = $("<th>").text(data.fields[i][1])
-	  		if (['date_created', 'date_updated', 'last_analysis'].indexOf(data.fields[i][0]) != -1)
+	  		if (['date_created', 'date_updated', 'last_analysis', 'date_first_seen', 'date_last_seen'].indexOf(data.fields[i][0]) != -1)
 	  			h.addClass('timestamp')
 	  		head.append(h)
 	  	}
@@ -134,11 +149,16 @@ function get_dataset(query, url) {
 	  				if (v == "" || v == undefined)
 	  					row.append($("<td />").text('-'))
 	  				else if (k == 'tags')
-	  					row.append($("<td />").addClass('tags_links'))
-	  				else if (['date_created', 'date_updated', 'last_analysis'].indexOf(k) != -1)
+	  					row.append($("<td />").append(display_tags(v)))
+	  				else if (['date_created', 'date_updated', 'last_analysis', 'date_first_seen', 'date_last_seen'].indexOf(k) != -1)
 	  					row.append($("<td />").text(format_date(new Date(v.$date))).addClass('timestamp'))
+	  				else if (k == 'value') {
+	  					l1 = $("<a class='graphicon' href='"+url_static_prefix+"nodes/value/"+encodeURIComponent(v)+"'><span class='glyphicon glyphicon-map-marker' aria-hidden='true'></span></a>")
+	  					l2 = $('<a href="'+url_static_prefix+'search/?query='+v+'">'+v+'</a>')
+	  					row.append($("<td class='value'></td>").append(l1).append(l2))
+	  				}
 	  				else
-	  					row.append("<td><a href='"+url_static_prefix+"nodes/"+k+"/"+encodeURIComponent(v)+"'>"+v+"</a></td>")
+	  					row.append("<td>"+v+"</td>")
 	  		}
 
 	  		row.append("<td><span class='glyphicon glyphicon-remove' onclick='javascript:dataset_remove(\""+elt['_id']['$oid']+"\")'></span></td>")
@@ -180,5 +200,6 @@ function get_dataset(query, url) {
 	  	next.attr('data-nav', next_page)
 	  }
 	});
+
 }
 

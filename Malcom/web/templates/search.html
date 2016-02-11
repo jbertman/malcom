@@ -13,14 +13,9 @@
 		<form action='{{ url_for("search") }}' method='GET'>
 			<div class='input-group input-group-lg searchbar'>
 				 <div class="input-group-btn">
-			        <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-expanded="false"><span id='selected-field'>Value</span> <span class="caret"></span></button>
-			        <ul class="dropdown-menu" role="menu">
-			          <li><a href="#" class='field-selector'>Value</a></li>
-			          <li><a href="#" class='field-selector'>Tags</a></li>
-			        </ul>
+			        <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-expanded="false"><span id='selected-field'>Value</span></button>
 			      </div><!-- /btn-group -->
 				<input class="form-control" name='query' autofocus value="{{term}}">
-				<input type='hidden' name='field' id='field-selector' value='value'>
 			</div>
 			<div class="checkbox">
 			    <label>
@@ -53,8 +48,11 @@
 </div>
 <div class='col-md-5'>
 	<h3>Recent searches</h3>
-	<table class='table'>
-		<tr><th>Search term</th><th># results</th></tr>
+	<table class='table table-condensed'>
+		<tr><th>Search term</th><th>times queried</th></tr>
+		{% for entry in history %}
+		<tr><td><a href="{{ url_for("search", field='value', query=entry.query) }}">{{entry.query}}</a></td><td>{{entry.hits}}</td></tr>
+		{%endfor%}
 	</table>
 </div>
 

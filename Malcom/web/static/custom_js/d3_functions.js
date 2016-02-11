@@ -51,17 +51,18 @@ function getneighbors() {
   datas = d3.selectAll('.selected').data()
   ids = []
   for (var i in datas) {
-    ids.push({'name': '_id', 'value': datas[i]._id.$oid})
+    ids.push( datas[i]._id.$oid)
   }
 
   if (ids.length == 0)
     return
-
+  query = {'field': 'id', 'value': ids }
+  console.log(query)
   $.ajax({
     type: 'get',
     url: url_static_prefix+'api/neighbors/',
     dataType: 'json',
-    data: ids,
+    data: $.param(query, true),
     beforeSend: function(data) {
       $(".graph").css('opacity', 0.1)
       spinner = $("#loading-spinner")
@@ -95,11 +96,13 @@ function display_message(text) {
 
 function getevil_nodes(node_id) {
   ids = []
-  ids.push({'name': '_id', 'value': node_id._id.$oid})
+  ids.push(node_id._id.$oid)
+  query = {'id': ids}
+
   $.ajax({
     url: url_static_prefix+'api/evil/',
     dataType: 'json',
-    data: ids,
+    data: $.param(query, true),
     success: function(data) {
       push_nodes(data.nodes)
       push_links(data.edges)
@@ -114,13 +117,15 @@ function getevil() {
 
   datas = d3.selectAll('.selected').data()
   for (var i in datas) {
-    ids.push({'name': '_id', 'value': datas[i]._id.$oid})
+    ids.push(datas[i]._id.$oid)
   }
+
+  query = {'id': ids}
 
   $.ajax({
     url: url_static_prefix+'api/evil/',
     dataType: 'json',
-    data: ids,
+    data: $.param(query, true),
     success: function(data) {
       push_nodes(data.nodes)
       push_links(data.edges)
@@ -419,7 +424,6 @@ function start() {
                 return r;
               })
      .attr('class', function (d) {
-      console.log(d)
         c = d.type
         for (var i in d.tags) { c += ' ' + d.tags[i] }
         return c
@@ -575,23 +579,27 @@ function display_data(d)
   display_generic(d);
 }
 
+
 function display_generic(d) {
   if (d.fields != undefined) {
-    for (var display in d.fields) {
-      key = d.fields[display][0]
-      label = d.fields[display][1]
+    for (var i in d.fields) {
+      key = d.fields[i][0]
+      label = d.fields[i][1]
+
       if (d[key] == undefined)
         value = "N/A"
+
       else {
+
         value = d[key]
 
-        if (['date_updated', 'date_created', 'last_analysis'].indexOf(key) != -1)
+        if (['date_updated', 'date_created', 'last_analysis', 'date_first_seen', 'date_last_seen'].indexOf(key) != -1)
           value = format_date(new Date(value.$date))
         if (key == 'tags')
-          if (d.tags.length == 0)
-            value = '-'
-          else
-            value = d.tags.join(', ')
+          value = display_tags(d.tags)
+        if (key == 'value')
+          value = '<a href="'+url_static_prefix+'search/?query='+value+'">'+value+'</a>'
+
       }
 
       $("#node_info").append("<tr><th>"+label+"</th><td>"+value+"</td></tr>");

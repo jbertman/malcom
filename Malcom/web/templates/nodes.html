@@ -10,7 +10,7 @@
       <li><strong>space</strong>: get node neighbors</li>
       <li><strong>e</strong>: find evil</li>
       <li><strong>u</strong>: unfix selected</li>
-      <li><strong>shift</strong>: multimple selections</li>
+      <li><strong>shift</strong>: multiple selections</li>
       <li><strong>h</strong>: hide nodes</li>
       <li><strong>(shift+)arrows</strong>: move nodes</li>
     </ul>
@@ -58,7 +58,7 @@ setInterval(function() {uncomm_all()}, 500)
   //       .append("svg:path")
   //         .attr("d", "M0,-5L10,0L0,5");
 
-d3.json(url_static_prefix+"api/neighbors/?{{field}}={{value}}", function(error, graph) {
+d3.json(url_static_prefix+"api/neighbors/?field={{field}}&value={{value}}", function(error, graph) {
     push_nodes(graph.nodes)
     push_links(graph.edges)
     // spinner.toggleClass('show')
@@ -103,7 +103,7 @@ ws_sniffer.onopen = snifferInterfaceInit
 
 
   <h2>Info</h2>
-  <table class='table' id='node_info'></table>
+  <table class='table table-condensed' id='node_info'></table>
   <div class='whois'></div>
 </div>
 {% endblock %}

@@ -49,11 +49,6 @@ app.secret_key = os.urandom(24)
 app.debug = True
 lm = LoginManager()
 
-Model = ModelClass()
-UserManager = UserManagerClass()
-
-
-
 # This enables the server to be ran behind a reverse-proxy
 # Make sure you have an nginx configuraiton similar to this
 
@@ -168,6 +163,10 @@ def before_request():
 	# make configuration and analytics engine available to views
 	g.config = app.config
 	g.messenger = app.config['MESSENGER']
+	if not 'Model' in g:
+		g.Model = app.config['MODEL']
+	if not 'UserManager' in g:
+		g.UserManager = app.config['USER_MANAGER']
 
 	if g.config['AUTH']:
 		g.user = current_user
@@ -179,43 +178,43 @@ def before_request():
 @lm.token_loader
 def load_token(token):
 	print "Load token"
-	u = UserManager.get_user(token=token)
+	u = g.UserManager.get_user(token=token)
 	if u:
 		u.last_activity = datetime.datetime.utcnow()
-		u = UserManager.save_user(u)
+		u = g.UserManager.save_user(u)
 	return u
 
 @lm.user_loader
 def load_user(username):
 	print "Load user"
-	u = UserManager.get_user(username=username)
+	u = g.UserManager.get_user(username=username)
 	if u:
 		u.last_activity = datetime.datetime.utcnow()
-		u = UserManager.save_user(u)
+		u = g.UserManager.save_user(u)
 	return u
 
 @lm.request_loader
 def load_user_from_request(request):
 	print "Load user from request"
 	api_key = request.headers.get("X-Malcom-API-Key")
+	if not app.config['AUTH']:
+		u=g.UserManager.get_default_user()
+		return u
 	if api_key:
 		print "Getting user for API key %s" % api_key
-		u = UserManager.get_user(api_key=api_key)
+		u = g.UserManager.get_user(api_key=api_key)
 		if u:
 			u.api_last_activity = datetime.datetime.utcnow()
 			u.api_request_count += 1
-			u = UserManager.save_user(u)
+			u = g.UserManager.save_user(u)
 			return u
-		else:
-			return abort(403)
-
 
 @app.route("/logout")
 @login_required
 def logout():
 	if 'token' in current_user:
 		del current_user['token']
-	UserManager.save_user(current_user)
+	g.UserManager.save_user(current_user)
 	logout_user()
 	return redirect(url_for('login'))
 
@@ -233,13 +232,13 @@ def login():
 		print "Login attempt for %s (rememberme: %s)" % (username, rememberme)
 
 		# get user w/ username
-		user = UserManager.get_user(username=username)
+		user = g.UserManager.get_user(username=username)
 
 		# check its password
 		if user and user.check_password(password):
 			print "Success!"
 			user.get_auth_token()
-			UserManager.save_user(user)
+			g.UserManager.save_user(user)
 			login_user(user, remember=rememberme)
 			return redirect(request.args.get("next") or url_for("index"))
 		else:
@@ -277,7 +276,7 @@ def account_settings():
 				return redirect(url_for('account_settings'))
 
 			current_user.reset_password(new)
-			UserManager.save_user(current_user)
+			g.UserManager.save_user(current_user)
 			flash('Password changed successfully!', 'success')
 			return redirect(url_for('account_settings'))
 
@@ -289,11 +288,6 @@ def account_sessions():
 	sniffer_sessions = len(current_user.sniffer_sessions) > 0
 	return render_template('account/sessions.html', sniffer_sessions=sniffer_sessions)
 
-@app.route("/account/yara")
-@login_required
-def account_yara():
-	return render_template('account/yara.html')
-
 
 # feeds ========================================================
 
@@ -304,7 +298,7 @@ def account_yara():
 @login_required
 def feeds():
 	# REDIS query to feed engine
-	feed_list = pickle.loads(g.messenger.send_recieve('feedList', 'feeds'))
+	feed_list = loads(g.messenger.send_recieve('feedList', 'feeds'))
 	# alpha = sorted(Malcom.feed_engine.feeds, key=lambda name: name)
 	return render_template('feeds.html', feed_names=[n for n in feed_list], feeds=feed_list)
 
@@ -339,29 +333,30 @@ def allowed_file(filename):
 @app.route('/search/', methods=['GET', 'POST'])
 @login_required
 def search(term=""):
-	#
+
 	# Create a result set with whichever paremeters we have
 	if request.method == 'POST':
 		field = 'value'
-		query = [{field: r} for r in request.form['bulk-text'].split('\r\n') if r != '']
-		result_set = Model.find({'$or': query})
+		query = [{field: r.strip()} for r in request.form['bulk-text'].split('\r\n') if r.strip() != '']
+		result_set = g.Model.find({'$or': query})
 	else:
 		query = request.args.get('query', False)
-		field = request.args.get('field', 'value')
+		if query:
+			query = query.strip()
+		field = request.args.get('field', 'value').strip()
 		if not bool(request.args.get('strict', False)):
-			result_set = Model.find({field: query})
+			result_set = g.Model.find({field: query})
 		else:
-			result_set = Model.find({field: re.compile(re.escape(query), re.IGNORECASE)})
-
-	# user has specified an empty query
-	if query == "":
-		flash('Empty search query is empty.')
-		return redirect(url_for('search'))
+			result_set = g.Model.find({field: re.compile(re.escape(query), re.IGNORECASE)})
 
 	# user did not specify a query
 	if query == False:
-		return render_template('search.html')
-
+		return render_template('search.html', history=g.Model.get_history())
+	else:
+		# user has specified an empty query
+		if query == "":
+			flash('Empty search query is empty.')
+			return redirect(url_for('search'))
 
 	# query passed tests, process the result set
 	base_elts = []
@@ -376,14 +371,23 @@ def search(term=""):
 
 	# The search yield no results
 
-	if len(base_elts) == 0:
+	if len(base_elts) == 0 and request.method == 'GET':
 		if not bool(request.args.get('log', False)):
 			flash('"{}" was not found. Use the checkbox above to add it to the database'.format(query))
-			return render_template('search.html', term=query)
+			return render_template('search.html', term=query, history=g.Model.get_history())
 		else:
-			flash('"{}" was not found. It was added to the database'.format(query))
+			new = g.Model.add_text([query], tags=['search'])
+			if new:
+				flash('"{}" was not found. It was added to the database (ID: {})'.format(query, new['_id']))
+				g.Model.add_to_history(query)
+			else:
+				flash('"{}" did not convert to a viable datatype'.format(query))
 			# or do the redirection here
-			return render_template('search.html', term=query)
+			return render_template('search.html', term=query, history=g.Model.get_history())
+
+	if len(base_elts) == 0 and request.method == 'POST':
+		flash('Your query did not yield any results. Use the checkbox above to add it to the database')
+		return render_template('search.html', history=g.Model.get_history())
 
 	return find_related(field, query, base_elts, base_ids, evil_elts)
 
@@ -393,7 +397,7 @@ def find_related(field, query, base_elts, base_ids, evil_elts):
 
 	first_degree = {}
 
-	data = Model.find_neighbors({ '_id' : {'$in': base_ids}})
+	data = g.Model.find_neighbors({ '_id' : {'$in': base_ids}})
 	nodes = data['nodes']
 	edges = data['edges']
 
@@ -454,7 +458,7 @@ def dataset():
 @login_required
 @user_is_admin
 def clear():
-	Model.clear_db()
+	g.Model.clear_db()
 	return redirect(url_for('dataset'))
 
 @app.route('/dataset/csv')
@@ -464,11 +468,11 @@ def dataset_csv():
 	filename = []
 	query = {}
 
-	fuzzy = bool(request.args.get('fuzzy', False))
+	regex = bool(request.args.get('regex', False))
 
 	for key in request.args:
-		if key != '' and key not in ['fuzzy']:
-			if fuzzy:
+		if key != '' and key not in ['regex']:
+			if regex:
 				# slow
 				query[key] = re.compile(request.args[key], re.IGNORECASE)
 			else:
@@ -479,7 +483,7 @@ def dataset_csv():
 			filename.append('all')
 
 	filename = "-".join(filename)
-	results = Model.find(query).sort('date_created', -1)
+	results = g.Model.find(query).sort('date_created', -1)
 
 	if results.count() == 0:
 		flash("You're about to download an empty .csv",'warning')
@@ -489,10 +493,10 @@ def dataset_csv():
 		response.headers['Cache-Control'] = 'no-cache'
 		response.headers['Content-Type'] = 'text/csv'
 		response.headers['Content-Disposition'] = 'attachment; filename='+filename+'-extract.csv'
-		fields = results[0].display_fields
-		data = ";".join([f[1] for f in fields ]) + "\n"
+		data = u"{},{},{},{},{},{}\n".format('Value', 'Type', 'Tags', 'Created', 'Updated', "Analyzed")
+
 		for e in results:
-			data += ";".join([list_to_str(e.get(f[0],"-")) for f in fields]) + "\n"
+			data += u"{},{},{},{},{},{}\n".format(e.get('value', "-"), e.get('type', "-"), ";".join(e.get('tags', [])), e.get('date_created', "-"), e.get('date_updated', "-"), e.get('last_analysis', "-"))
 
 		response.data = data
 		response.headers['Content-Length'] = len(response.data)
@@ -529,9 +533,9 @@ def add_data():
 	for e in elements:
 		if ";" in e:
 			elt, tag = e.split(';')
-			Model.add_text([elt], tag.split(','))
+			g.Model.add_text([elt], tag.split(','))
 		else:
-			Model.add_text([e])
+			g.Model.add_text([e])
 
 	return redirect(url_for('dataset'))
 
@@ -587,14 +591,13 @@ def sniffer():
 
 		# associate sniffer session with current user
 		current_user.add_sniffer_session(session_id)
-		UserManager.save_user(current_user)
+		g.UserManager.save_user(current_user)
 		debug_output("Added session %s for user %s" % (session_id, current_user.username))
 
 		# if requested, start sniffing right away
 		if request.form.get('startnow', None):
 			# REDIS send message to sniffer to start
 			g.messenger.send_recieve('sniffstart', 'sniffer-commands', params= {'session_id': session_id, 'remote_addr': str(request.remote_addr)} )
-			#sniffer_session.start(str(request.remote_addr))
 
 		return redirect(url_for('sniffer_session', session_id=session_id))
 
@@ -628,7 +631,6 @@ def send_raw_payload(session_id, flowid, session_info=None):
 	response.headers['Content-Length'] = len(response.data)
 
 	return response
-
 
 
 
@@ -666,10 +668,13 @@ class MalcomWeb(Process):
 		if not self.setup['AUTH']:
 			app.config['LOGIN_DISABLED'] = True
 
+		app.config['MODEL'] = ModelClass(self.setup)
+		app.config['USER_MANAGER'] = UserManagerClass(self.setup)
+
 		lm.init_app(app)
 		lm.login_view = 'login'
 		lm.session_protection = 'strong'
-		lm.anonymous_user = UserManager.get_default_user
+		lm.anonymous_user = app.config['USER_MANAGER'].get_default_user
 
 		for key in self.setup:
 			app.config[key] = self.setup[key]
